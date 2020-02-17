@@ -10,6 +10,7 @@ import time
 from general_function.file_wav import *
 from general_function.file_dict import *
 from general_function.gen_func import *
+from general_function.muti_gpu import ParallelModel
 
 # LSTM_CNN
 import keras as kr
@@ -26,7 +27,7 @@ from readdata24 import DataSpeech
 
 abspath = ''
 ModelName='251'
-#NUM_GPU = 2
+NUM_GPU = 2
 
 class ModelSpeech(): # 语音模型类
 	def __init__(self, datapath):
@@ -125,6 +126,7 @@ class ModelSpeech(): # 语音模型类
 		
 		
 		model = Model(inputs=[input_data, labels, input_length, label_length], outputs=loss_out)
+		model = ParallelModel(model, NUM_GPU)
 		
 		model.summary()
 		
@@ -149,8 +151,6 @@ class ModelSpeech(): # 语音模型类
 		y_pred = y_pred[:, :, :]
 		#y_pred = y_pred[:, 2:, :]
 		return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
-	
-	
 	
 	def TrainModel(self, datapath, epoch = 2, save_step = 1000, batch_size = 32, filename = abspath + 'model_speech/m' + ModelName + '/speech_model'+ModelName):
 		'''
@@ -270,8 +270,6 @@ class ModelSpeech(): # 语音模型类
 					txt += 'True:\t' + str(data_labels) + '\n'
 					txt += 'Pred:\t' + str(pre) + '\n'
 					txt += '\n'
-					
-				
 			
 			#print('*[测试结果] 语音识别 ' + str_dataset + ' 集语音单字错误率：', word_error_num / words_num * 100, '%')
 			print('*[Test Result] Speech Recognition ' + str_dataset + ' set word error ratio: ', word_error_num / words_num * 100, '%')
@@ -300,76 +298,35 @@ class ModelSpeech(): # 语音模型类
 		for i in range(batch_size):
 			x_in[i,0:len(data_input)] = data_input
 		
-		
 		base_pred = self.base_model.predict(x = x_in)
-		
-		#print('base_pred:\n', base_pred)
-		
-		#y_p = base_pred
-		#for j in range(200):
-		#	mean = np.sum(y_p[0][j]) / y_p[0][j].shape[0]
-		#	print('max y_p:',np.max(y_p[0][j]),'min y_p:',np.min(y_p[0][j]),'mean y_p:',mean,'mid y_p:',y_p[0][j][100])
-		#	print('argmin:',np.argmin(y_p[0][j]),'argmax:',np.argmax(y_p[0][j]))
-		#	count=0
-		#	for i in range(y_p[0][j].shape[0]):
-		#		if(y_p[0][j][i] < mean):
-		#			count += 1
-		#	print('count:',count)
-		
 		base_pred =base_pred[:, :, :]
-		#base_pred =base_pred[:, 2:, :]
 		
 		r = K.ctc_decode(base_pred, in_len, greedy = True, beam_width=100, top_paths=1)
-		
-		#print('r', r)
-		
-		
 		r1 = K.get_value(r[0][0])
-		#print('r1', r1)
-		
-		
-		#r2 = K.get_value(r[1])
-		#print(r2)
-		
 		r1=r1[0]
-		
+
 		return r1
-		pass
-	
+
 	def RecognizeSpeech(self, wavsignal, fs):
 		'''
 		最终做语音识别用的函数，识别一个wav序列的语音
 		'''
 		
-		#data = self.data
-		#data = DataSpeech('E:\\语音数据集')
-		#data.LoadDataList('dev')
-		# 获取输入特征
-		#data_input = GetMfccFeature(wavsignal, fs)
-		#t0=time.time()
 		data_input = GetFrequencyFeature3(wavsignal, fs)
-		#t1=time.time()
-		#print('time cost:',t1-t0)
 		
 		input_length = len(data_input)
 		input_length = input_length // 8
 		
 		data_input = np.array(data_input, dtype = np.float)
-		#print(data_input,data_input.shape)
 		data_input = data_input.reshape(data_input.shape[0],data_input.shape[1],1)
-		#t2=time.time()
 		r1 = self.Predict(data_input, input_length)
-		#t3=time.time()
-		#print('time cost:',t3-t2)
 		list_symbol_dic = GetSymbolList(self.datapath) # 获取拼音列表
-		
 		
 		r_str=[]
 		for i in r1:
 			r_str.append(list_symbol_dic[i])
 		
 		return r_str
-		pass
 		
 	def RecognizeSpeech_FromFile(self, filename):
 		'''
@@ -377,14 +334,8 @@ class ModelSpeech(): # 语音模型类
 		'''
 		
 		wavsignal,fs = read_wav_data(filename)
-		
 		r = self.RecognizeSpeech(wavsignal, fs)
-		
 		return r
-		
-		pass
-		
-	
 		
 	@property
 	def model(self):
@@ -392,53 +343,3 @@ class ModelSpeech(): # 语音模型类
 		返回keras model
 		'''
 		return self._model
-
-
-if(__name__=='__main__'):
-	
-	#import tensorflow as tf
-	#from keras.backend.tensorflow_backend import set_session
-	#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-	#进行配置，使用95%的GPU
-	#config = tf.ConfigProto()
-	#config.gpu_options.per_process_gpu_memory_fraction = 0.95
-	#config.gpu_options.allow_growth=True   #不全部占满显存, 按需分配
-	#set_session(tf.Session(config=config))
-	
-	
-	datapath =  abspath + ''
-	modelpath =  abspath + 'model_speech'
-	
-	
-	if(not os.path.exists(modelpath)): # 判断保存模型的目录是否存在
-		os.makedirs(modelpath) # 如果不存在，就新建一个，避免之后保存模型的时候炸掉
-	
-	system_type = plat.system() # 由于不同的系统的文件路径表示不一样，需要进行判断
-	if(system_type == 'Windows'):
-		datapath = 'E:\\语音数据集'
-		modelpath = modelpath + '\\'
-	elif(system_type == 'Linux'):
-		datapath =  abspath + 'dataset'
-		modelpath = modelpath + '/'
-	else:
-		print('*[Message] Unknown System\n')
-		datapath = 'dataset'
-		modelpath = modelpath + '/'
-	
-	ms = ModelSpeech(datapath)
-	
-	
-	#ms.LoadModel(modelpath + 'm251/speech_model251_e_0_step_100000.model')
-	ms.TrainModel(datapath, epoch = 50, batch_size = 16, save_step = 500)
-	
-	#t1=time.time()
-	#ms.TestModel(datapath, str_dataset='train', data_count = 128, out_report = True)
-	#ms.TestModel(datapath, str_dataset='dev', data_count = 128, out_report = True)
-	#ms.TestModel(datapath, str_dataset='test', data_count = 128, out_report = True)
-	#t2=time.time()
-	#print('Test Model Time Cost:',t2-t1,'s')
-	#r = ms.RecognizeSpeech_FromFile('E:\\语音数据集\\ST-CMDS-20170001_1-OS\\20170001P00241I0053.wav')
-	#r = ms.RecognizeSpeech_FromFile('E:\\语音数据集\\ST-CMDS-20170001_1-OS\\20170001P00020I0087.wav')
-	#r = ms.RecognizeSpeech_FromFile('E:\\语音数据集\\wav\\train\\A11\\A11_167.WAV')
-	#r = ms.RecognizeSpeech_FromFile('E:\\语音数据集\\wav\\test\\D4\\D4_750.wav')
-	#print('*[提示] 语音识别结果：\n',r)

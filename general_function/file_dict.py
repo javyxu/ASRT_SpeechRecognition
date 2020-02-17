@@ -11,7 +11,7 @@ def GetSymbolList(datapath):
 	返回一个列表list类型变量
 	'''
 	if(datapath != ''):
-		if(datapath[-1]!='/' or datapath[-1]!='\\'):
+		if(datapath[-1] !='/' or datapath[-1]!='\\'):
 			datapath = datapath + '/'
 	
 	txt_obj=open(datapath + 'dict.txt','r',encoding='UTF-8') # 打开文件并读入
